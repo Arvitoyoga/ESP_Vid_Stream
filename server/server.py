@@ -114,6 +114,11 @@ async def ingest(ws: WebSocket):
 
 
 # ---------- Viewer ----------
+@app.get("/healthz", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+
 @app.get("/", dependencies=[Depends(viewer_auth)])
 async def index():
     return FileResponse(BASE / "static" / "index.html")

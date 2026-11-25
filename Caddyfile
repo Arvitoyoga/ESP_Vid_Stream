@@ -1,0 +1,17 @@
+{
+	# Token kamera ada di query string, termasuk saat upstream gagal.
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					delete token
+				}
+			}
+		}
+	}
+}
+
+{$CAMERA_DOMAIN} {
+	reverse_proxy relay:8080
+}
