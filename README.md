@@ -4,9 +4,8 @@ ESP32-CAM membuka koneksi WSS keluar ke VPS dan mengirim frame JPEG. Browser mem
 
 ## 1. Siapkan domain dan jaringan
 
-- Di zona DNS `caksa.id`, arahkan record `A` bernama `live` ke IPv4 publik VPS. Jika ada record `AAAA` untuk `live.caksa.id`, pastikan IPv6-nya juga mencapai VPS. Caddy memakai domain ini untuk memperoleh dan memperbarui sertifikat TLS. [Dokumentasi HTTPS Caddy](https://caddyserver.com/docs/automatic-https)
-- Di Oracle Cloud, izinkan TCP `443` dari `0.0.0.0/0` pada Network Security Group yang terpasang ke VNIC atau Security List subnet, serta di firewall VM. Port ini melayani HTTPS dan WSS. Caddy juga menerima koneksi langsung di port ini untuk memperoleh dan memperbarui sertifikat melalui TLS-ALPN. [Dokumentasi aturan jaringan Oracle](https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/securityrules.htm) · [Validasi TLS-ALPN Caddy](https://caddyserver.com/docs/automatic-https#tls-alpn-challenge)
-- Jika ingin membuka `http://live.caksa.id:8081` dari internet, izinkan juga TCP `8081`. Docker meneruskannya ke port HTTP `80` milik Caddy untuk redirect ke `https://live.caksa.id`. Jika memakai IPv6 publik, terapkan aturan yang sama untuk `::/0`. Di dalam jaringan Docker, Caddy meneruskan video dan kontrol ke `relay:8081`.
+- Arahkan record DNS `A` untuk `live.caksa.id` ke IPv4 publik VPS. Jika ada record `AAAA`, pastikan IPv6-nya juga mencapai VPS.
+- Nginx di host memakai TCP `80` untuk validasi sertifikat dan redirect, serta TCP `443` untuk HTTPS dan WSS. Izinkan kedua port itu di Network Security Group atau Security List Oracle serta di firewall VM. Port `8081` terikat ke `127.0.0.1` untuk koneksi dari Nginx ke Docker. [Dokumentasi aturan jaringan Oracle](https://docs.oracle.com/en-us/iaas/Content/Network/Concepts/securityrules.htm)
 - Pasang Docker Engine dan plugin Docker Compose di VM. Contoh perintah di bawah memakai image VM Ubuntu dan akun SSH `ubuntu`. [Panduan instalasi Docker untuk Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
 
 ## 2. Salin proyek dan isi konfigurasi
@@ -14,16 +13,16 @@ ESP32-CAM membuka koneksi WSS keluar ke VPS dan mengirim frame JPEG. Browser mem
 Dari folder proyek di komputer lokal, ganti `IP_PUBLIK` dengan IP VPS atau gunakan alias SSH milikmu.
 
 ```sh
-rsync -avR compose.yaml Caddyfile .env.example \
+rsync -avR compose.yaml nginx .env.example \
   server/Dockerfile server/.dockerignore server/requirements.txt server/server.py server/static \
-  ubuntu@IP_PUBLIK:~/esp32-cam/
+  ubuntu@IP_PUBLIK:~/ESP_Vid_Stream/
 ssh ubuntu@IP_PUBLIK
 ```
 
-Di VPS, buat file konfigurasi saat pemasangan pertama.
+Di VPS, masuk ke `~/ESP_Vid_Stream`. Jika relay sudah berjalan dan `.env` sudah terisi, lanjut ke langkah 3. Untuk pemasangan pertama, buat kredensial berikut.
 
 ```sh
-cd ~/esp32-cam
+cd ~/ESP_Vid_Stream
 install -m 600 .env.example .env
 openssl rand -hex 32
 openssl rand -hex 32
@@ -32,30 +31,52 @@ nano .env
 
 | Variabel di `.env` | Isi |
 | --- | --- |
-| `CAMERA_DOMAIN` | Sudah terisi `live.caksa.id` |
 | `INGEST_TOKEN` | Hasil acak pertama. Salin nilai yang sama ke firmware kamera |
 | `VIEWER_USER` | Nama pengguna untuk login di browser |
 | `VIEWER_PASS` | Hasil acak kedua atau sandi kuat tersendiri untuk penonton |
 
-Compose membaca `.env` di sebelah `compose.yaml`. Jika VPS sudah memakai `.env` dengan domain lama, ubah barisnya menjadi `CAMERA_DOMAIN=live.caksa.id` dan jalankan kembali perintah Compose di bawah.
-
-## 3. Jalankan dan cek dari browser
+## 3. Jalankan relay di VPS
 
 ```sh
+cd ~/ESP_Vid_Stream
 sudo docker compose config --quiet
-sudo docker compose up -d --build --wait
+sudo docker compose up -d --build --wait --remove-orphans
 sudo docker compose ps
+curl --fail http://127.0.0.1:8081/healthz
 ```
 
-Buka `https://live.caksa.id/` dan masuk dengan akun penonton. Selama kamera belum tersambung, halaman akan menampilkan **ESP32 offline**. Untuk memeriksa jalur HTTPS dari luar VPS, jalankan perintah berikut. Endpoint ini tetap merespons saat kamera mati.
+Opsi `--remove-orphans` membersihkan container Caddy dari konfigurasi proyek sebelumnya. Hasil pemeriksaan relay yang diharapkan adalah `{"status":"ok"}`, termasuk saat kamera mati.
+
+## 4. Tambahkan live.caksa.id ke Nginx yang sudah berjalan
+
+Contoh Ubuntu ini memakai `/etc/nginx/conf.d/*.conf`. Jika sudah ada blok `server_name live.caksa.id`, gabungkan pengaturan ke blok yang cocok agar domain hanya terdaftar sekali per port.
+
+Aktifkan konfigurasi HTTP dulu agar Certbot dapat memvalidasi domain melalui port `80`.
 
 ```sh
+sudo install -d -m 755 /var/www/letsencrypt
+sudo install -m 644 nginx/live.caksa.id-http.conf /etc/nginx/conf.d/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Jika sertifikat untuk `live.caksa.id` sudah tersedia, gunakan lokasi sertifikat dan private key tersebut dalam `nginx/live.caksa.id-https.conf` dan lanjutkan ke pemasangan HTTPS. Untuk sertifikat baru, pasang Certbot jika diperlukan (`sudo apt install certbot`), lalu jalankan perintah berikut. Certbot menggunakan webroot dan memuat ulang Nginx setelah sertifikat diperbarui. [Panduan Certbot](https://eff-certbot.readthedocs.io/en/stable/using.html#webroot)
+
+```sh
+sudo certbot certonly --webroot -w /var/www/letsencrypt \
+  --cert-name live.caksa.id -d live.caksa.id --deploy-hook "systemctl reload nginx"
+```
+
+Setelah sertifikat tersedia, aktifkan situs HTTPS dan periksa jalur publiknya.
+
+```sh
+sudo install -m 644 nginx/live.caksa.id-https.conf /etc/nginx/conf.d/
+sudo nginx -t && sudo systemctl reload nginx
 curl --fail https://live.caksa.id/healthz
 ```
 
-Hasil yang diharapkan adalah `{"status":"ok"}`. Jika domain belum bisa dibuka, periksa resolusi DNS, aturan ingress, dan pesan sertifikat dengan `sudo docker compose logs --tail=60 caddy`.
+Responsnya harus sama dengan pemeriksaan relay lokal. Buka `https://live.caksa.id/` dan masuk dengan akun penonton. Selama kamera belum tersambung, halaman menampilkan **ESP32 offline**.
 
-## 4. Sambungkan ESP32-CAM
+## 5. Sambungkan ESP32-CAM
 
 Atur klien WebSocket di firmware untuk terhubung ke `wss://live.caksa.id/ingest?token=ISI_INGEST_TOKEN`. Jika library meminta parameter terpisah, gunakan host `live.caksa.id`, port `443`, dan path `/ingest?token=ISI_INGEST_TOKEN`. Ganti `ISI_INGEST_TOKEN` dengan nilai `INGEST_TOKEN` dari VPS. Aktifkan TLS, validasi sertifikat server dengan CA tepercaya, dan sinkronkan waktu ESP32 sebelum membuka koneksi.
 

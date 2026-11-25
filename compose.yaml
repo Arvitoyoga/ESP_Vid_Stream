@@ -5,6 +5,8 @@ services:
       INGEST_TOKEN: ${INGEST_TOKEN:?Isi INGEST_TOKEN di .env}
       VIEWER_USER: ${VIEWER_USER:?Isi VIEWER_USER di .env}
       VIEWER_PASS: ${VIEWER_PASS:?Isi VIEWER_PASS di .env}
+    ports:
+      - "127.0.0.1:8081:8081"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8081/healthz', timeout=3).close()"]
@@ -12,23 +14,3 @@ services:
       timeout: 5s
       start_period: 5s
       retries: 3
-
-  caddy:
-    image: caddy:2-alpine
-    environment:
-      CAMERA_DOMAIN: ${CAMERA_DOMAIN:-live.caksa.id}
-    ports:
-      - "8081:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      relay:
-        condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  caddy_data:
-  caddy_config:
