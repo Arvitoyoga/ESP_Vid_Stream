@@ -18,7 +18,7 @@ services:
     environment:
       CAMERA_DOMAIN: ${CAMERA_DOMAIN:-live.caksa.id}
     ports:
-      - "80:80"
+      - "8081:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

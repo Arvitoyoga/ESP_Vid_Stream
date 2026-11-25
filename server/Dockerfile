@@ -10,6 +10,6 @@ COPY server.py .
 COPY static/ ./static/
 
 USER 65532:65532
-EXPOSE 8080
+EXPOSE 8081
 # Koneksi kamera dan frame terakhir disimpan dalam memori satu worker.
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1", "--log-level", "warning", "--no-access-log"]
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8081", "--workers", "1", "--log-level", "warning", "--no-access-log"]
