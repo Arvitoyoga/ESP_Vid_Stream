@@ -1,8 +1,9 @@
 """
-Server relay ESP32-CAM  (jalan di VM Oracle)
+Relay ESP32-CAM di belakang Nginx pada VPS Oracle.
 
-  ESP32 --WebSocket /ingest--> server --MJPEG /stream--> browser
-  Browser --POST /api/set--> server --WebSocket--> ESP32  (resolusi, LED, FPS)
+Nginx menerima HTTPS dan WSS untuk live.caksa.id dan meneruskannya ke
+127.0.0.1:8081 di VPS. Kamera mengirim frame ke /ingest. Browser menonton
+melalui /stream dan mengatur resolusi, LED, serta FPS melalui POST /api/set.
 
 Butuh Python 3.10+.
 """
@@ -23,11 +24,10 @@ load_dotenv()
 INGEST_TOKEN = os.getenv("INGEST_TOKEN", "")
 VIEWER_USER = os.getenv("VIEWER_USER", "")
 VIEWER_PASS = os.getenv("VIEWER_PASS", "")
-PORT = int(os.getenv("PORT", "8080"))
 BASE = Path(__file__).parent
 
-if not INGEST_TOKEN:
-    raise SystemExit("INGEST_TOKEN belum diisi. Salin .env.example menjadi .env lalu isi.")
+if not all((INGEST_TOKEN, VIEWER_USER, VIEWER_PASS)):
+    raise SystemExit("Isi INGEST_TOKEN, VIEWER_USER, dan VIEWER_PASS di .env untuk menjalankan relay.")
 
 app = FastAPI()
 security = HTTPBasic(auto_error=False)
@@ -36,9 +36,6 @@ RES_ALLOWED = {5, 6, 8, 9, 10}  # QVGA, CIF, VGA, SVGA, XGA
 
 
 def viewer_auth(creds: Optional[HTTPBasicCredentials] = Depends(security)):
-    """Login dasar untuk viewer. Dinonaktifkan kalau VIEWER_PASS kosong."""
-    if not VIEWER_PASS:
-        return
     ok = (
         creds is not None
         and secrets.compare_digest(creds.username.encode(), VIEWER_USER.encode())
@@ -188,4 +185,11 @@ async def api_set(k: str, v: int):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=PORT)
+    uvicorn.run(
+        app,
+        host=os.getenv("UVICORN_HOST", "127.0.0.1"),
+        port=int(os.getenv("PORT", "8081")),
+        workers=1,  # Koneksi kamera dan frame terakhir berada di memori proses ini.
+        log_level="warning",
+        access_log=False,  # URL /ingest memuat token kamera.
+    )

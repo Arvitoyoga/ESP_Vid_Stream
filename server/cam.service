@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 User=ubuntu
-WorkingDirectory=/home/ubuntu/esp32cam-oracle/server
-ExecStart=/home/ubuntu/esp32cam-oracle/server/venv/bin/uvicorn server:app --host 0.0.0.0 --port 8080
+WorkingDirectory=/home/ubuntu/ESP_Vid_Stream/server
+ExecStart=/home/ubuntu/ESP_Vid_Stream/server/venv/bin/python server.py
 Restart=always
 RestartSec=3
 

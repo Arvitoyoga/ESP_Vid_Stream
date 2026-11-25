@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    UVICORN_HOST=0.0.0.0
 WORKDIR /app
 
 COPY requirements.txt .
@@ -11,5 +12,4 @@ COPY static/ ./static/
 
 USER 65532:65532
 EXPOSE 8081
-# Koneksi kamera dan frame terakhir disimpan dalam memori satu worker.
-CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8081", "--workers", "1", "--log-level", "warning", "--no-access-log"]
+CMD ["python", "server.py"]
