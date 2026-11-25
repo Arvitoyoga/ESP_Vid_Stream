@@ -7,7 +7,7 @@ services:
       VIEWER_PASS: ${VIEWER_PASS:?Isi VIEWER_PASS di .env}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8080/healthz', timeout=3).close()"]
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8081/healthz', timeout=3).close()"]
       interval: 30s
       timeout: 5s
       start_period: 5s
